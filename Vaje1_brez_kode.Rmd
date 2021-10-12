@@ -1,0 +1,152 @@
+---
+title: '1. sklop: Binomski model'
+# author: "Nina Ruzic Gorenjec"
+fontsize: 12pt
+output:
+  pdf_document:
+    number_sections: yes
+editor_options:
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE
+                      , message = FALSE, fig.width = 8, fig.height = 5, out.width = "0.8\\textwidth")
+```
+
+\vspace{-1cm}
+# Primer
+
+Izberite pravilni odgovor na spodnje vprasanje.
+
+Vprasanje: Qskd senciljm dowdlq a?
+
+(a) 25
+
+(b) 625
+
+(c) 1
+
+(d) Nic od nastetega.
+
+**Zanima nas verjetnost, da odgovorimo pravilno.**
+
+# Verjetnostni model za nas primer
+
+Vzorec $X_1,X_2,\ldots,X_n$, kjer je:
+
+* $n$ stevilo studentov na vajah,
+  \vspace{0.1cm}
+* $X_i$ predstavlja pravilnost odgovora $i$-tega studenta, tj. $X_i=1$, ce $i$-ti student odgovori pravilno, in $X_i=0$, ce le-ta odgovori napacno.
+
+Preucujemo $X_1+X_2+\ldots+X_n$, tj. stevilo vseh pravilnih odgovorov, ki ga oznacimo z $X$ (druga standardna oznaka je $Y$ v smislu izida, anglesko *outcome*).
+
+* $X\mid\theta \sim \text{Bin}(n,\theta)$
+  \vspace{0.1cm}
+* $P(X=k \mid \theta) = {n\choose k}\theta^{k}(1-\theta)^{n-k}$; $k = 0, 1,..., n$
+  \vspace{0.1cm}
+* $\theta$ je verjetnost pravilnega odgovora -- **parameter, ki nas zanima**
+  \vspace{0.1cm}
+* $\text{E}(X)=n\theta$, $\text{Var}(X)=n\theta (1 - \theta)$
+
+Nas primer:
+```{r}
+n <- 26
+```
+
+Nasi podatki (oznacimo s $k$ realizacijo $X$ na nasem vzorcu):
+```{r}
+k <- 6
+```
+
+## Kako bi ocenili nas parameter s "klasicno" frekventisticno statistiko? Katere metode bi lahko uporabili?
+
+Po metodi najvecjega verjetja dobimo cenilko $\hat{\theta} = \frac{k}{n}$. Dobimo enako cenilko tudi z metodo momentov.
+
+## Bayesov model
+
+### Opazenih je bilo 6 pravilnih izmed 26 odgovorov
+
+### Privzemite neinformativno apriorno Beta porazdelitev (Beta(1,1)). Izracunajte aposteriorno porazdelitev. Pomagajte si s funkcijami \texttt{dbeta, pbeta}
+```{r}
+x <- seq(0,1,length = 100)
+
+aposteriorna_porazdelitev <- dbeta(x,1+k,1+n-k)
+```
+
+### Narisite gostoto apriorne in aposteriorne porazdelitve na istem grafu (\texttt{plot, lines})
+```{r}
+plot(x,aposteriorna_porazdelitev,type = 'l')
+```
+
+### Izracunajte $P(\theta \leq 0.4)$ in $P(\theta \leq 0.4 | X)$
+
+### Izracunajte 95\% centralni kredibilnostni interval. Pomagajte si s funkcijo \texttt{qbeta}. Narisite meje kredibilnostnega intervala na grafu iz tocke 3 (\texttt{abline(v= )}).
+
+
+### Izracunajte se 95% interval zaupanja z aproksimacijo normalne porazdelitve  in na podlagi metode Clopper-Pearson. Primerjajte rezultate 
+
+Opomba: pomagajte si z prop.test(k, n, correct=F)\$conf in binom.test(k, n)\$conf
+
+
+### Na predavanjih ste definirali pricakovano vrednost aposteriorne porazdelitve. Zapisite formulo in izracunajte oceno. Zapisite formulo v primeru neinformativne apriorne porazdelitve (Beta(1,1)). Ali je ocena enaka kakor pri frekventisticnem pristopu?
+
+
+### DODATNA NALOGA: napovedovanje (ang. *prediction*)
+
+Izpit je sestavljen iz desetih vprasanj (taksnih iz zacetka navodil tega sklopa).
+
+1. Denimo, da bi pred zacetkom prvih vaj dali izpit v resevanje nekemu studentu. Kaj lahko povemo o porazdelitvi stevila njegovih pravilnih odgovorov?
+
+2. Na prvih vajah smo pridobili vzorec, s katerim smo preizkusili, kako na vprasanje odgovarjamo, ce ne znamo cisto nic. Vzorec ste bili studentje, prisotni na prvih vajah. Izpit damo v resevanje studentu, **ki ni bil prisoten na prvih vajah** in se tudi ni ucil. Kaj lahko povemo o porazdelitvi stevila njegovih pravilnih odgovorov?
+
+Odgovor na 1. vprasanje je **apriorna napovedna porazdelitev** (angl. *prior predictive distribution*). \newline
+Ta nas tipicno ne zanima.
+
+Odgovor na 2. vprasanje je **aposteriorna napovedna porazdelitev** (angl. *posterior predictive distribution*).
+
+**Splosna formula za apriorno napovedno porazdelitev**:
+$$f(x_{\text{nov}}) = \int_\Theta f(x_{\text{nov}}, \theta) \, d\theta
+= \int_\Theta f(x_{\text{nov}} \mid \theta)\pi(\theta) \, d\theta.$$
+
+**Splosna formula za aposteriorno napovedno porazdelitev**:
+$$f(x_{\text{nov}} \mid x) = \int_\Theta f(x_{\text{nov}}, \theta \mid x) \, d\theta
+= \int_\Theta f(x_{\text{nov}} \mid \theta, x)\pi(\theta \mid x) \, d\theta
+= \int_\Theta f(x_{\text{nov}} \mid \theta)\pi(\theta \mid x) \, d\theta.$$
+
+V nasem modelu (binomski model z apriorno beta porazdelitvijo) je:
+
++ $\pi(\theta) \sim \text{Beta}(\alpha,\beta)$; izbrali smo $\alpha=1, \beta=1$
+  \vspace{0.3cm}
++ $\pi(\theta \mid x) \sim \text{Beta}(\alpha_{\text{apost}},\beta_{\text{apost}}) = \text{Beta}(k+\alpha,n-k+\beta)$; za nas vzorec velikosti $n=26$ smo dobili $k=6$
+  \vspace{0.3cm}
++ za $x_{\text{nov}} \equiv K \in \{0,1,\ldots,N\}$ je $f(x_{\text{nov}} \mid \theta) = {N \choose K} \theta^{K} (1-\theta)^{N-K}$; dolocili smo $N=10$, zanimajo nas vsi mozni $K$
+
+Izkaze se, da je iskana apriorna ali aposteriorna napovedna porazdelitev iz druzine t.i. **beta-binomske porazdelitve** (BetaBin). To je diskretna porazdelitev $Y$ s parametri $N \in \mathbb{N}$ in $\tilde{\alpha},\tilde{\beta}>0$, ki lahko zavzame vrednosti $K \in \{0,1,\ldots,N\}$ in je
+$$P(Y=K) = {N\choose K } \frac{B(K+\tilde{\alpha},N-K+\tilde{\beta})}{B(\tilde{\alpha},\tilde{\beta})}.$$
+
+**Apriorna napovedna porazdelitev v binomskem modelu**: BetaBin($N,\alpha,\beta$).
+
+**Aposteriorna napovedna porazdelitev v binomskem modelu**: BetaBin($N,\alpha_{\text{apost}},\beta_{\text{apost}}$) oziroma  BetaBin($N,k+\alpha,n-k+\beta$).
+
+```{r}
+# Beta-binomska porazdelitev v R (je vkljucena tudi v nekaterih paketih, 
+# ponekod drugace parametrizirana):
+dbetabinom <- function(K, N, a, b){
+  choose(N, K) * beta(K+a, N-K+b) / beta(a, b)
+}
+```
+
+Narisite apriorno in aposteriorno napovedno porazdelitev.
+
+Ali je  to racunanje res potrebno?
+
++ Nasa ocena parametra po upostevanju podatkov nasega vzorca je \newline $\hat{\theta}=\alpha_{\text{apost}}/(\alpha_{\text{apost}}+\beta_{\text{apost}})$.
+  \vspace{0.1cm}
++ Stevilo pravilnih odgovorov je porazdeljeno Bin$(10,\theta)$.
+  \vspace{0.1cm}
++ Ali je preprosto aposteriorna porazdelitev kar Bin$(10,\hat{\theta})$? Primerjajte obe porazdelitvi
+
+\vspace{0.8cm}
+
+
