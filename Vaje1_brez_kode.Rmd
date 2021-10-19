@@ -69,28 +69,69 @@ Po metodi najvecjega verjetja dobimo cenilko $\hat{\theta} = \frac{k}{n}$. Dobim
 
 ### Privzemite neinformativno apriorno Beta porazdelitev (Beta(1,1)). Izracunajte aposteriorno porazdelitev. Pomagajte si s funkcijami \texttt{dbeta, pbeta}
 ```{r}
-x <- seq(0,1,length = 100)
+a <- 1
+b <- 1
 
-aposteriorna_porazdelitev <- dbeta(x,1+k,1+n-k)
+theta <- seq(0,1,length = 100)
+
+apriorna_porazdelitev <- dbeta(theta, a, b)
+
+a_apost <- a + k
+b_apost <- b + n -k
+
+aposteriorna_porazdelitev <- dbeta(theta, a_apost, b_apost)
 ```
 
 ### Narisite gostoto apriorne in aposteriorne porazdelitve na istem grafu (\texttt{plot, lines})
 ```{r}
-plot(x,aposteriorna_porazdelitev,type = 'l')
+plot(theta, aposteriorna_porazdelitev, type='l', col='blue', ylab='', xlab=expression(theta))
+lines(theta, apriorna_porazdelitev, col='red')
+legend("topright", legend = c("apriorna","aposteriorna"),
+col = c("red","blue"), lty = 1, bty = "n", cex = 1.3)
 ```
 
 ### Izracunajte $P(\theta \leq 0.4)$ in $P(\theta \leq 0.4 | X)$
+```{r}
+pbeta(0.4, a, b)
+pbeta(0.4, a_apost, b_apost)
+```
 
 ### Izracunajte 95\% centralni kredibilnostni interval. Pomagajte si s funkcijo \texttt{qbeta}. Narisite meje kredibilnostnega intervala na grafu iz tocke 3 (\texttt{abline(v= )}).
+```{r}
+I1 <- qbeta(c(0.025,0.975), a_apost, b_apost)
 
+plot(theta, aposteriorna_porazdelitev, type='l', col='blue', ylab='', xlab=expression(theta))
+lines(theta, apriorna_porazdelitev, col='red')
+legend("topright", legend = c("apriorna","aposteriorna"),
+col = c("red","blue"), lty = 1, bty = "n", cex = 1.3)
+abline(v=I1, lty='dashed')
+```
 
 ### Izracunajte se 95% interval zaupanja z aproksimacijo normalne porazdelitve  in na podlagi metode Clopper-Pearson. Primerjajte rezultate 
 
 Opomba: pomagajte si z prop.test(k, n, correct=F)\$conf in binom.test(k, n)\$conf
+```{r}
+I2 <- prop.test(k, n, correct=F)$conf
+I3 <- binom.test(k, n)$conf
 
+plot(theta, aposteriorna_porazdelitev, type='l', col='blue', ylab='', xlab=expression(theta))
+lines(theta, apriorna_porazdelitev, col='red')
+legend("topright", legend = c("apriorna","aposteriorna"),
+col = c("red","blue"), lty = 1, bty = "n", cex = 1.3)
+abline(v=I1, lty='dashed', col='green')
+abline(v=I2, lty='dashed', col='orange')
+abline(v=I3, lty='dashed', col='yellow')
+```
 
 ### Na predavanjih ste definirali pricakovano vrednost aposteriorne porazdelitve. Zapisite formulo in izracunajte oceno. Zapisite formulo v primeru neinformativne apriorne porazdelitve (Beta(1,1)). Ali je ocena enaka kakor pri frekventisticnem pristopu?
+```{r}
+# Frekventisticen pristop:
+k/n
 
+# Bayesov pristop:
+a_apost / (a_apost + b_apost)
+
+```
 
 ### DODATNA NALOGA: napovedovanje (ang. *prediction*)
 
