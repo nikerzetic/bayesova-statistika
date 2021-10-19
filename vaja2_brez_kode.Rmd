@@ -1,0 +1,175 @@
+---
+title: '2. sklop: Poissonov model'
+fontsize: 12pt
+output:
+  pdf_document:
+    number_sections: yes
+editor_options:
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, fig.width = 8, fig.height = 5, out.width = "0.8\\textwidth")
+```
+
+\vspace{-1cm}
+# Podatki
+
+Imamo zgodovinske podatke o stevilu rojstev cetverckov na leto v Prusiji za obdobje 69 let (Ladislaus von Bortkiewicz), za katere je znano, da se dobro prilegajo Poissonovi porazdelitvi.
+
+```{r}
+(podatki <- data.frame(stevilo.cetverckov = 0:6,
+                       stevilo.let = c(14,24,17,9,2,2,1)))
+```
+
+\vspace{-5mm}
+
+# Verjetnostni model za nas primer
+
+Vzorec $X_1,X_2,\ldots,X_n$, kjer je:
+
+* $n=69$ stevilo let,
+  \vspace{0.1cm}
+* $X_i$ predstavlja stevilo rojstev cetverckov v $i$-tem letu,
+  \vspace{0.1cm}
+* $X_i \mid \lambda \sim \text{Poiss}(\lambda)$,
+  \vspace{0.1cm}
+* $P(X_i=k \mid \lambda) = \frac{1}{k!} \lambda^{k} e^{-\lambda}$ za $k \in \{0,1,2,\ldots\}$,
+  \vspace{0.1cm}
+* $\text{E}(X_i)=\lambda$  (**parameter, ki nas zanima**),
+  \vspace{0.1cm}
+* $\text{Var}(X_i)=\lambda$.
+
+Za vsako leto imamo sledece stevilo rojenih cetverckov:
+```{r}
+(x <- rep(podatki$stevilo.cetverckov, podatki$stevilo.let))
+```
+
+Vse in se vec o Poissonovi porazdelitvi najdete tu (pripravil doc. dr. Gaj Vidmar):
+
++ clanek: http://ims.mf.uni-lj.si/archive/17(2)/31.pdf
+
+# Naloge 
+
+## Kako bi ocenili parameter $\lambda$ s "klasicno" frekventisticno statistiko? Katere metode bi lahko uporabili?
+
+## Ocenjevanje v Bayesovi statistiki
+
+Bayesova formula:
+\vspace{-8mm}
+
+$$f(\vartheta | \vec{x} ) = \frac{f(\vec{x} | \vartheta) f(\vartheta)}{f(\vec{x})} \propto f(\vec{x} | \vartheta) f(\vartheta).$$
+
+Opazeni podatki:
+
+- $n$: stevilo let
+- $k = \sum_{i=1}^n X_i$: stevilo cetverckov
+
+```{r}
+(n <- length(x))
+(k <- sum(x))
+```
+
+
+### Izracunajte parametre apriorne porazdelitve
+
+Za apriorno porazdelitev izberite Gamo porazdelitev, ki je v primeru Poissonove porazdelitve podatkov konjugirana porazdelitev (ang. *conjugate prior*; pomeni, da apriorna in aposteriorna porazdelitev pripadata enaki druzini porazdelitev), zato se lahko uporablja tudi izraz **Gama-Poissonov model**.
+
+Gostota Gama porazdelitve pri parametrih $\alpha,\beta>0$:
+$$f(\lambda\mid \alpha, \beta) =  \frac{\beta^\alpha}{\Gamma(\alpha)} \lambda^{\alpha-1} e^{-\beta\lambda},$$
+
+* $\text{E}(\text{Gama}(\alpha,\beta))=\frac{\alpha}{\beta}$,
+  \vspace{0.1cm}
+* $\text{Var}(\text{Gama}(\alpha,\beta))=\frac{\alpha}{\beta^2}$.
+
+Izracunajte $\alpha$ in $\beta$ apriorne porazdelitve, pri cemer upostevajte, da je povprecje apriorne porazdelitve enako 1.5 (torej toliksno je povprecno stevilo rojenih cetverckov na leto), medtem ko standardni odklon znasa 0.5.
+```{r}
+E <- 1.5
+SD <- 0.5
+
+beta <- E/SD/SD
+alpha <- E * beta
+```
+
+### Narisite gostoto apriorne porazdelitve (funkcija \texttt{dgamma})
+```{r}
+lambda <- seq(0, 4, length=500)
+apriorna_porazdelitev <- dgamma(lambda, alpha, beta)
+
+plot(lambda, apriorna_porazdelitev, type='l', col='red', ylab='', 
+     xlab=expression(lambda))
+```
+
+\vspace{-0.6cm}
+### Vemo, da je aposteriorna porazdelitev porazdeljena Gama. Izracunajte parametre aposteriorne porazdelitve in narisite njeno gostoto (na istem grafu kot za apriorno porazdelitev)
+```{r}
+alpha_apost <- alpha + k
+beta_apost <- beta + n
+aposteriorna_porazdelitev <- dgamma(lambda, alpha_apost, beta_apost)
+
+plot(lambda, apriorna_porazdelitev, type='l', col='red', ylab='', 
+     xlab=expression(lambda), 
+     ylim=c(0, max(c(max(apriorna_porazdelitev),
+                     max(aposteriorna_porazdelitev)))))
+lines(lambda, aposteriorna_porazdelitev, col='blue')
+legend("topright", legend = c("apriorna","aposteriorna"),
+       col = c("red","blue"), lty = 1, bty = "n", cex = 1.3)
+```
+
+### Izracunajte $P(1.1 \leq \lambda \leq 1.9)$ in $P(1.1 \leq \lambda \leq 1.9 | \vec{x})$
+```{r}
+sum(pgamma(c(1.1, 1.9), alpha, beta) * c(-1, 1))
+sum(pgamma(c(1.1, 1.9), alpha_apost, beta_apost) * c(-1, 1))
+```
+
+### Izracunajte 95\% centralni kredibilnostni interval za $\lambda$. Pomagajte si s funkcijo \texttt{qgamma}. Narisite meje kredibilnostnega intervala na grafu iz tocke 3.2.3 (\texttt{abline(v= )}).
+```{r}
+I <- qgamma(c(0.025,0.975), alpha_apost, beta_apost)
+
+plot(lambda, apriorna_porazdelitev, type='l', col='red', ylab='', 
+     xlab=expression(lambda), 
+     ylim=c(0, max(c(max(apriorna_porazdelitev),
+                     max(aposteriorna_porazdelitev)))))
+lines(lambda, aposteriorna_porazdelitev, col='blue')
+legend("topright", legend = c("apriorna","aposteriorna"),
+       col = c("red","blue"), lty = 1, bty = "n", cex = 1.3)
+abline(v=I, lty='dashed')
+```
+
+### Srediscna cena parametra $\lambda$
+
+Na predavanjih ste zapisali, da je pricakovana vrednost aposteriorne porazdelitve (ki je hkrati ocena za $\lambda$, oznacimo jo z $\hat{\lambda}$) enaka
+$$\hat{\lambda} = \frac{\beta}{\beta+n}\cdot \frac{\alpha}{\beta} +\frac{n}{\beta+n}\cdot\frac{k}{n}.$$
+Primerjajte $\hat{\lambda}$, apriorno oceno za $\lambda$ (to je $\frac{\alpha}{\beta}$) in frekventisticno oceno $\frac{k}{n}$ na danem vzorcu.
+
+Kateri vrednosti je ocena $\hat{\lambda}$ blizje? Zakaj?
+```{r}
+lambda_apriorna <- alpha/beta
+lambda_aposteriorna <- beta/(beta+n)*alpha/beta + n/(beta+n)*k/n
+lambda_frekventisticna <- k/n
+
+```
+
+
+### Kolikšna je verjetnost, da se v povprecju na leto rodijo eni do dvoji cetvorcki?
+
+
+### DODATNA NALOGA: Napovedovanje
+
+Zanima nas, kaj lahko povemo o stevilu cetvorckov v prihajajocem letu ob upostevanju podatkov zadnjih 69 let, tj. zanima nas **aposteriorna napovedna porazdelitev**.
+
+(Ce bi nas zanimalo stevilo cetvockov v prihajajocem letu brez upostevanja podatkov 69 let, potem bi nas zanimala **apriorna napovedna porazdelitev**).
+
+V Poissonovem modelu z apriorno Gama porazdelitvijo lahko hitro izpeljemo apriorno/aposteriorno napovedno porazdelitev:
+$$
+P(Y=K) = \frac{\Gamma(K+\tilde{\alpha})}{\Gamma(\tilde{\alpha}) \, K!} \tilde{\beta}^{\tilde{\alpha}} / (\tilde{\beta}+1)^{K+\tilde{\alpha}} \quad \text{za } K \in \{0,1,2,\ldots\}.
+$$
+
+To je ravno negativna binomska porazdelitev s parametroma $r=\tilde{\alpha}$ in $p=1/(1+\tilde{\beta})$, zasledimo pa lahko tudi poimenovanje **Gama-Poissonova porazdelitev**.
+
+Za $\tilde{\alpha},\tilde{\beta}$ vstavimo primerna parametra Gama apriorne oz. aposteriorne porazdelitve.
+
+- Izracunajte apriorno in aposteriorno napovedno porazdelitev.
+
+- Poglejte, kaksna je razlika med pravilno izracunano aposteriorno napovedno porazdelitvijo in tisto, ki jo dobimo, ce v Poissonovo porazdelitev vstavimo naso oceno parametra $\hat{\lambda}=\alpha_{\text{apost}}/\beta_{\text{apost}}$.
+
