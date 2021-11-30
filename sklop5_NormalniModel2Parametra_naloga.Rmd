@@ -1,0 +1,111 @@
+---
+title: '5. sklop: Normalni model z dvema parametroma'
+fontsize: 12pt
+output:
+  pdf_document:
+    number_sections: yes
+editor_options:
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, fig.width = 8, fig.height = 5, out.width = "0.8\\textwidth")
+```
+
+# Primer
+
+Podan imamo naslednji vzorec visin (metri) studentov moskega spola:
+
+```{r}
+x <- c(1.91, 1.94, 1.68, 1.75, 1.81, 1.83, 1.91, 1.95, 1.77, 1.98, 
+       1.81, 1.75, 1.89, 1.89, 1.83, 1.89, 1.99, 1.65, 1.82, 1.65, 
+       1.73, 1.73, 1.88, 1.81, 1.84, 1.83, 1.84, 1.72, 1.91, 1.63)
+```
+
+**Zanima nas populacijsko povprecje in standradni odklon za visino studentov.**
+
+\vspace{-0.5cm}
+
+# Naloge
+
+## Normalni model z dvema parametroma. 
+
+Uporabite apriorno porazdelitev, ki je definirana: 
+
+$$
+f(\mu,\sigma^2) = f(\mu\mid\sigma^2)\cdot f(\sigma^2)=f_{N(1.78; \frac{\sigma^2}{1})} (\mu) f_{InvGamma(\frac{1}{2}, \frac{0.1^2}{2})} (\sigma^2)
+$$
+
+Izracunajte aposteriorno porazdelitev na podlagi podatkov. Narisite apriorno in aposteriorno porazdelitev (na locenih grafih) za $(\mu, \sigma^2)$ - za ta namen si lahko pomagate s funkcijo $\texttt{contour}$. Za generiranje iz $InvGamma$ lahko upostevate, da je inverz parametra porazdeljen $Gamma$, ali uporabite knjiznico \texttt{invgamma}.
+```{r}
+#install.packages("invgamma")
+mus <- seq(0,3.6,length=100)
+sigmas2 <- seq(0,4.2,length=100)
+
+kappa0 <- 1
+mu0 <- 1.78
+a0 <- 0.5
+b0 <- 0.005
+
+f <- function(mu,sigma2) {
+  dnorm(mu,mu0,sigma2/kappa0) / dgamma(sigma2,a0,rate=b0)
+}
+
+apriorna <- outer(mus,sigmas2,"f")
+contour(mus, sigmas2, apriorna, xlab=expression(mu), ylab=expression(sigma^2))
+
+n <- length(x)
+kappa1 <- kappa0 + n
+mu1 <- kappa0/(kappa0+n)*mu0 + n/(kappa0+n)*mean(x)
+a1 <- a0 + n/2
+b1 <- b + (sum((x-mean(x))^2) + n*kappa0/(n+kappa0)*(mean(x)-mu0)^2)/2
+
+g <- function(mu,sigma2) {
+  dnorm(mu,mu0,sigma2/kappa0) / dgamma(sigma2,a,rate=b)
+}
+```
+
+
+## Naloga - simulacija
+
+Simulirajte iz aposteriorne porazdelitve, ki jo dobimo za nas primer pri zgoraj izbrani konjugirani apriorni porazdelitvi.
+
+Za dobljeni vzorec narisite histrogram s knjiznico ggplot in ukazom stat_bin2d. Spodaj je primer za simulacijo iz bivariatne normalne porazdelitve, katere robni porazdelitvi sta neodvisni.
+
+```{r, message=F, warning=F}
+#install.packages("ggplot2")
+library(ggplot2)
+a <- rnorm(100000, 0, 1)
+b <- rnorm(100000, 1, 2)
+simulacija <- data.frame(a, b)
+ggplot(simulacija, aes(a, b)) + stat_bin2d()
+```
+
+
+## Robna aposterirona porazdelitev pri neinformativni apriorni porazdelitvi
+
+V primeru neinformativne apriorne porazdelitve dobimo posploseno/nestandardizirano Studentovo porazdelitev:
+$$
+\mu\mid x \sim t_{n-1}(\bar{x}, s^2/n).
+$$
+
+Ce imamo v modelu $N(\mu, \sigma^2=0.1^2)$ neinformativno aposteriorno porazdelitev, potem je
+$$
+\mu\mid x \sim N(\bar{x}, \sigma^2/n) = N(\bar{x}, 0.1^2/n).
+$$
+Primerjajte rezultata iz obeh modelov (neinformativna apriorna v eno- ali dvoparametricnem modelu), kjer se zozimo na podvzorec prvih 10 visin (pri vecjem $n$ razlika ne bi bila tako ocitna) in v modelu z znano varianco vzamemo kar $\sigma^2=s^2$ (s cimer goljufamo, saj iz vzorca ocenimo varianco, ki naj bi bila znana vnaprej):
+
+## Dodatna naloga: napovedovanje
+
+Zanima nas, kaj lahko povemo o visini novega studenta ob upostevanju podatkov 30 studentov, tj. zanima nas **aposteriorna napovedna porazdelitev**.
+
+V primeru konjugirane apriorne porazdelitve dobimo posploseno/nestandardizirano Studentovo porazdelitev:
+$$
+x_{nov}\mid x \sim t_{\nu_n}(\mu_n, \sigma_n^2/\kappa_n+\sigma_n^2).
+$$
+V primeru neinformativne apriorne porazdelitve dobimo posploseno/nestandardizirano Studentovo porazdelitev:
+$$
+x_{nov}\mid x \sim t_{n-1}(\bar{x}, s^2/n+s^2).
+$$
+
+Poudarite bistveno razliko med aposteriorno porazdelitvijo povprecne visine in aposteriorno napovedno porazdelitvijo za visino novega studenta (npr. vzemite konjugirano apriorno porazdelitev).
