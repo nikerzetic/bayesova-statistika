@@ -1,0 +1,295 @@
+---
+title: '7. sklop: (Hierarhicni) regresijski modeli'
+fontsize: 12pt
+output:
+  pdf_document:
+    number_sections: yes
+editor_options:
+  chunk_output_type: console
+---
+
+
+
+!!! POZOR !!! Raje ne delajte porocila, ker bo trajalo zelo dolgo casa (veliko modelov, veliko iteracij).
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = T, fig.width = 8, fig.height = 5, out.width = "0.8\\textwidth")
+```
+
+# Primer ocenjevanja povprecja
+
+Na preteklih vajah smo za naslednji vzorec visin (metri) studentov moskega spola ocenjevali povprecje.
+
+```{r}
+x <- c(1.91, 1.94, 1.68, 1.75, 1.81, 1.83, 1.91, 1.95, 1.77, 1.98, 
+       1.81, 1.75, 1.89, 1.89, 1.83, 1.89, 1.99, 1.65, 1.82, 1.65, 
+       1.73, 1.73, 1.88, 1.81, 1.84, 1.83, 1.84, 1.72, 1.91, 1.63)
+```
+
+To smo naredili na naslednje nacine:
+
+1. Znana varianca, eksaktno s konjugirano apriorno porazdelitvijo, vzeli smo sibko informativno
+2. Znana varianca, preko Metropolis-Hastings algoritma s konjugirano apriorno porazdelitvijo, vzeli smo sibko informativno (enaka kakor pri 1.)
+3. Dvoparametricni model, eksaktno s konjugirano apriorno porazdelitvijo, vzeli smo sibko informativno
+4. Dvoparametricni model, preko Metropolis-Hastings algoritma s sibko informativno apriorno porazdelitvijo
+
+Kaj vse smo morali pri teh pristopih dolociti?
+
+Sedaj povprecje ocenimo s pomocjo paketov v R.
+
+Ocenjevanje povprecja je poseben primer linearne regresije, ki vsebuje le konstanten clen (brez drugih neodvisnih/pojasnjevalnih spremenljivk).
+
+Standardne oznake v regresiji (izid y):
+```{r}
+y <- x
+```
+
+## BayesX
+
+**Bistvo:** Spoznamo knjiznico BayesX.
+
+```{r}
+#install.packages("R2BayesX")
+library(R2BayesX)
+
+bayesx.norm <- bayesx(y ~ 1, family = "gaussian", method = "MCMC")
+?bayesx.control
+```
+
+Kaj vse smo morali dolociti? Potrebno dolociti le formulo, ostalo prednastavljeno (default).
+
+Kaj lahko spremenimo?
+
+Poglejte si pomoc za bayesx in bayesx.control (parametri iterations, burnin, step, hyp.prior).
+
+Povzetek rezultatov:
+```{r}
+summary(bayesx.norm)
+```
+
+Takole dobimo vzorce:
+```{r}
+bayesx.mu <- attr(bayesx.norm$fixed.effects, "sample")[,1]
+bayesx.sigma2 <- attr(bayesx.norm$variance, "sample")
+```
+dolzina = (12000-2000)/10, tj. (iterations-burnin)/step
+
+Narisite traceplot vzorcev za $\mu$ in $\sigma^2$ ter histogram obeh vzorcev.
+
+```{r}
+par(mfrow = c(2, 2))
+plot(bayesx.mu, type = "l", main = "Povprecje,\ntraceplot", xlab = "")
+plot(bayesx.sigma2, type = "l", main = "Varianca,\ntraceplot", xlab = "")
+hist(bayesx.mu, prob = T, main = "Povprecje,\nrobna aposteriorna porazdelitev")
+lines(density(bayesx.mu), col = "red", lwd = 2)
+hist(bayesx.sigma2, prob = T, main = "Varianca, \nrobna aposteriorna porazdelitev")
+lines(density(bayesx.sigma2), col = "red", lwd = 2)
+```
+
+## Nimble
+
+**Bistvo:** Spoznamo knjiznico Nimble. Potrebovali boste Rtools. Navodila:
+\url{https://cran.r-project.org/bin/windows/Rtools/rtools40.html}.
+
+```{r}
+library(nimble)
+```
+
+Stirje osnovni gradniki:
+```{r}
+# 1. Dolocimo model in apriorne porazdelitve parametrov:
+code <- nimbleCode({
+  mu ~ dnorm(0, 0.00001) #default za drugi parameter je precision=1/sigma^2
+  sigma2 ~ dunif(0, 10000)
+  for (i in 1:n) {
+    y[i] ~ dnorm(mu, var = sigma2)
+  }
+})
+
+code #nic ne naredi, le shrani si predstavitev modela
+```
+
+```{r}
+# 2. Dolocimo konstante v modelu:
+constants <- list(n = length(y))
+```
+
+```{r}
+# 3. Dolocimo podatke:
+data <- list(y=y)
+```
+
+```{r}
+# 4. Dolocimo zacetne vrednosti za verige parametrov:
+inits <- list(mu = 0,
+              sigma2 = 1)
+```
+
+```{r}
+Rmodel <- nimbleModel(code, constants, data, inits) #le model zgradis
+
+Rmodel$initializeInfo() #preverimo, da je vse ok
+```
+
+```{r}
+conf <- configureMCMC(Rmodel) #zacetek inference
+conf$printSamplers() #izves, kaj so samplerji
+
+conf$printMonitors() #izves, kaj si belezi
+#default monitors so natanko:
+Rmodel$getNodeNames(topOnly = T,stochOnly = T)
+```
+
+```{r}
+Rmcmc <- buildMCMC(conf)
+```
+
+1. opcija:
+S spodnjim pozenemo verigo, vendar v R-u in zato je zelo pocasno (spodaj le 100 iteracij)! Ne uporabljati tega!!!
+```{r}
+samples <- runMCMC(Rmcmc, 100)
+```
+
+2. opcija:
+Do sedaj smo delali v R. Prevedemo v C++ (Rtools je potreben):
+```{r}
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Cmodel)
+samples <- runMCMC(Cmcmc, 100)   #ekspres
+samples <- runMCMC(Cmcmc, 1000)  #ekspres
+samples <- runMCMC(Cmcmc, 10000) #tudi zelo hitro
+```
+
+Bliznjica od stirih osnovnih gradnikov do koncnih rezultatov (brez vmesnih korakov):
+```{r}
+samples <- nimbleMCMC(code, constants, data, inits, niter=10000)
+```
+
+Oglejmo si rezultate:
+```{r}
+dim(samples)
+head(samples)
+
+samplesSummary(samples) #funkcija za povzetek rezultatov
+
+summary(bayesx.norm) #primerjava z BayesX - seveda zelo podobno
+
+mean(y) #vzorcno povprecje
+var(y)  #vzorcna varianca
+#BTW: y je bil generiran iz N(mean=1.85, sigma2=0.01)
+#Oba prava (populacijska) parametra sta vsebovana v credible interval.
+```
+
+# (Multiple) linearna regresija
+
+Podane imamo podatke o slovenskih ekipnih sportnicah (kosarkasice, odbojkasice in rokometasice), stare od 10 do 30 let. Preucevali so poskodbe kolen.
+
+Podatki so bili podlaga za clanek R. Vauhnik et al., *Rate and risk of anterior cruciate ligament injury among sportswomen in Slovenia* (2011).
+
+```{r}
+source("sportnice.R")
+str(sportnice)
+```
+
+## Ali je kolicina treninga povezana z jemanjem kontracepcijskih tablet?
+
+**Bistvo:** 
+
+* Lastnosti linearne regresije v splosnem (ni specificno za Bayesovo analizo) - kljucna razlika med enostavno in multiplo regresijo. Ker sta tako trening kot jemanje kontracepcijskih tablet povezana s starostjo (razpon 11-29 let), lahko pravi efekt jemanja kontracepcije opazimo sele, ko sportnice izenacimo glede na starost, tj. v model dodamo neodvisno spremenljivko starost.
+* Specifikacija linearnega modela s paketom nimble.
+
+### Frekventisticni pristop - s pomočjo funkcije lm pripravita dva regresijska modela: en, ko je trening modeliran s pomočjo kontrace in drug, ko je trening modeliran s pomočjo kontrace in starost. Preverite oba modela (funkcija summary).
+```{r}
+kontrace <- lm(trening~kontrace, data=sportnice)
+kontrace_starost <- lm(trening~kontrace+starost, data=sportnice)
+
+summary(kontrace)
+summary(kontrace_starost)
+```
+
+### Na ekvivavlenten način izvedite Bayesovski pristop s paketom BayesX - v formuli dodajte kontrace oz. kotnrace + starost.
+```{r}
+kontrace_B <- bayesx(trening~kontrace, data=sportnice)
+kontrace_starost_B <- bayesx(trening~kontrace+starost, data=sportnice)
+
+summary(kontrace_B)
+summary(kontrace_starost_B)
+```
+
+### Narišite traceplot za oba parametra in aposteriorno porazdelitev 
+```{r}
+kontrace_B.mu <- attr(kontrace_B$fixed.effects, "sample")[,1]
+kontrace_B.sigma2 <- attr(kontrace_B$variance, "sample")
+kontrace_starost_B.mu <- attr(kontrace_starost_B$fixed.effects, "sample")[,1]
+kontrace_starost_B.sigma2 <- attr(kontrace_starost_B$variance, "sample")
+```
+
+```{r}
+par(mfrow = c(2, 2))
+plot(kontrace_B.mu, type = "l", main = "Povprecje,\ntraceplot", xlab = "")
+plot(kontrace_B.sigma2, type = "l", main = "Varianca,\ntraceplot", xlab = "")
+hist(kontrace_B.mu, prob = T, main = "Povprecje,\nrobna aposteriorna porazdelitev")
+lines(density(kontrace_B.mu), col = "red", lwd = 2)
+hist(kontrace_B.sigma2, prob = T, main = "Varianca, \nrobna aposteriorna porazdelitev")
+lines(density(kontrace_B.sigma2), col = "red", lwd = 2)
+
+```
+
+```{r}
+par(mfrow = c(2, 2))
+plot(kontrace_starost_B.mu, type = "l", main = "Povprecje,\ntraceplot", xlab = "")
+plot(kontrace_starost_B.sigma2, type = "l", main = "Varianca,\ntraceplot", xlab = "")
+hist(kontrace_starost_B.mu, prob = T, main = "Povprecje,\nrobna aposteriorna porazdelitev")
+lines(density(kontrace_starost_B.mu), col = "red", lwd = 2)
+hist(kontrace_starost_B.mu, prob = T, main = "Varianca, \nrobna aposteriorna porazdelitev")
+lines(density(kontrace_starost_B.mu), col = "red", lwd = 2)
+```
+
+### Izvedite Bayesovski pristop s paketom nimble - definirajte objekte: code, constants, data in inits in generirajte vzorec
+
+
+### Primerjajte glede na rezultate s knjiznice BayesX
+
+
+## Ali je kolicina treninga ob neki starosti povezana s sportom?
+
+**Bistvo:** 
+
+* Lastnosti linearne regresije v splosnem (ni specificno za Bayesovo analizo) - obravnava opisnih spremenljivk z vec kot dvema kategorijama (tj. uvedba slamnatih spremenljivk oz. *dummy variables*) in interakcija med spremenljivkami.
+* Bolj ucinkonita specifikacija linearnega modela s paketom nimble.
+* Kako preprosto generiramo vec verig in graficno preucimo konvergenco.
+
+### Frekventisticni pristop - lm glede na spol in starost. Naredite se en model, kjer vkljucite se interakcijo v modelu. Primerjajte modela.
+
+
+### Izvedite Bayesovski pristop s paketom nimble:
+
+
+### Opomba: graficno lahko predstavite rezultate s pomocjo knjiznice basicMCMCplots.
+
+## Poglejmo si se enkrat model za povezanost kolicine treninga z jemanjem kontracepcijskih tablet neodvisno od starosti
+
+**Bistvo:**
+
+* Centriranje in effective sample size - centriranje spremenljivk (odstejemo povprecje) nujno pri nimble.
+* Centriranje spremenljivk (odstejemo povprecje pri vsaki neodvisni) ne spremeni regresijskih koeficientov, le regresijsko konstanto, zato interpretacija ostane enaka :)
+* Standardizacija spremenljivk (odstejemo povprecje in delimo s standardnim odklonom pri vsaki neodvisni) pa bi spremenila vse regresijske koeficiente.
+* Prednosti/slabosti bayesx in nimble.
+
+
+### S pomocjo funkcije effectiveSize (knjiznica coda) lahko izracunate efektivna velikost vzorca (ang. effective sample size). Izracunajte jo za generirarne vzorce. Ali t.i. thinning (argument step v bayesx) ima vpliv na rezultat?
+
+
+### Pripravite Bayesov model s pomočjo knjižnice nimble.
+
+
+## Model za povezanost kolicine treninga s tezo, visino in bmi
+
+**Bistvo:** Zaradi multikolinearnosti model ni dobro definiran (splosno, ni specificno za Bayesovo), vidimo v nenavadnem obnasanju verig in effective sample size. Tu imamo ekstremen primer multikolinearnosti, saj je bmi s formulo izracunan iz teze in visine - sprasujemo se nemogoce vprasanje: Kaksna je razlika v kolicini treninga za dve sportnici, ki sta enako visoki in tezki ter imata razlicen bmi? Ker taksne sportnice v nasih podatkih ne obstajajo, tega ne moremo oceniti.
+
+### Pripravite Bayesovski model s pomočjo knjižnice nimble.
+
+
+
