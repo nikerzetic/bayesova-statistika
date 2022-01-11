@@ -1,0 +1,175 @@
+---
+title: '7. sklop: (Hierarhicni) regresijski modeli - 2. del'
+fontsize: 12pt
+output:
+  pdf_document:
+    number_sections: yes
+editor_options:
+  chunk_output_type: console
+---
+
+
+
+!!! POZOR !!! Raje ne delajte porocila, ker bo trajalo zelo dolgo casa (veliko modelov, veliko iteracij).
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = T, fig.width = 8, fig.height = 5, out.width = "0.8\\textwidth")
+```
+
+```{r}
+y <- c(1.91, 1.94, 1.68, 1.75, 1.81, 1.83, 1.91, 1.95, 1.77, 1.98, 
+       1.81, 1.75, 1.89, 1.89, 1.83, 1.89, 1.99, 1.65, 1.82, 1.65, 
+       1.73, 1.73, 1.88, 1.81, 1.84, 1.83, 1.84, 1.72, 1.91, 1.63)
+
+```
+
+```{r}
+library(R2BayesX)
+library(nimble)
+library(ggplot2)
+library(basicMCMCplots)
+library(coda)
+
+source("sportnice.R")
+```
+
+
+# Hierarhicna linearna regresija
+
+## Hierarhicni normalni model z enakimi variancami - sole se enkrat
+
+Na primer s solami lahko gledamo tudi kakor na 100 regresijskih modelov (za vsako solo eden) rezultatMatTesta~1 (tj. ocenjujemo le regresijsko konstanto), ki so skupaj povezani s hiperparametri.
+
+```{r}
+library(dplyr)
+library(reshape2)
+source("podatki_sole.R")
+str(pod)
+
+pod.sole = pod %>%
+  group_by(school) %>%
+  summarise(povprecje = mean(mathscore), n=length(mathscore), varianca = var(mathscore))
+str(pod.sole)
+
+# Rezultate vsake sole v svoj stolpec.
+# Ker imamo po solah razlicno velike vzorce, bodo imeli nekateri stolpci na koncu NA (bo delovalo v redu).
+m <- length(pod.sole$school)
+n <- pod.sole$n
+yMatrix <- matrix(NA, ncol = m, nrow = max(n))
+for (j in 1:m) {
+  yMatrix[1:n[j],j] <- pod[pod$school==j,]$mathscore
+}
+```
+
+```{r}
+code <- nimbleCode({
+  mu ~ dnorm(0, sd = 100); #apriorna za hiperparameter
+  eta ~ dunif(0, 100)      #apriorna za hiperparameter
+  sigma ~ dunif(0, 100)    #apriorna za parameter
+  #za vse (hiper)apriorne smo izbrali nekaj zelo neinformativnega
+  #pozor, nismo se obremenjevali s primernostjo druzine porazdelitve (npr. inverzna gama), saj ne bomo nic teroreticno izracunali
+  
+  for (j in 1:m) {
+    muGroups[j] ~ dnorm(mu, sd = eta) #porazdelitve parametrov
+    for (i in 1:n[j]) {
+      y[i, j] ~ dnorm(muGroups[j], sd = sigma); #model
+    }
+  }
+})
+
+constants <- list(m = m, n = n)
+
+inits <- list(mu = mean(pod.sole$povprecje), #tako kot pri sklopu z Gibbsovim vzorcevalnikom
+              eta = sd(pod.sole$povprecje),
+              sigma = mean(sqrt(pod.sole$varianca)),
+              muGroups = pod.sole$povprecje)
+
+data <- list(y = yMatrix)
+```
+
+```{r}
+Rmodel <- nimbleModel(code = code, constants = constants,
+                      inits = inits, data = data)
+Rmodel$initializeInfo() #smo dobili opozorilo zaradi NA v podatkih, bo vseeno v redu
+
+conf <- configureMCMC(Rmodel)
+conf$printSamplers()
+conf$printMonitors() #vzorcenj za parametre mu_i si ne bo zapomnil, zato to spodaj dodamo
+conf$addMonitors('muGroups') #dodamo shranjevanje muGroups
+conf$printMonitors() #je dodano
+
+Rmcmc <- buildMCMC(conf)
+Cmodel <- compileNimble(Rmodel)
+Cmcmc <- compileNimble(Rmcmc, project = Cmodel)
+samples <- runMCMC(Cmcmc, niter = 12000, nburnin = 2000)
+# samples <- runMCMC(Rmcmc, 10)
+
+# Si ogledamo nekatere (hiper)parametre
+samplesSummary(samples)[c(2, 3), ]
+samplesPlot(samples, var = c("mu","muGroups[1]"))
+
+samplesSummary(samples)[c(1, 103), ]
+samplesPlot(samples, var = c("eta","sigma"))
+
+# Preko spodnje slike opazimo, da so nasi rezultati enaki/podobni kakor v 6. sklopu z Gibbsovim vzorcevalnikom:
+par(mfrow=c(2, 2))
+plot(density(samples[ , 2]), type = "l", main = "mu")
+abline(v = quantile(samples[ , 2], prob=c(0.025, 0.5, 0.975)), lty = 2)
+plot(density(samples[ , 1]**2), type = "l", main = "eta2")
+abline(v = quantile(samples[ , 1]**2, prob=c(0.025, 0.5, 0.975)), lty = 2)
+plot(density(samples[ , 3]), type = "l", main = "mu_1")
+abline(v = quantile(samples[ , 3], prob=c(0.025, 0.5, 0.975)), lty = 2)
+plot(density(samples[ , 103]**2), type = "l", main = "sigma2")
+abline(v = quantile(samples[ , 103]**2, prob=c(0.025, 0.5, 0.975)), lty = 2)
+par(mfrow = c(1, 1))
+
+effectiveSize(samples)
+min(effectiveSize(samples)) #najmanjsi izmed effective sample size - v redu
+
+max(abs( cor(samples)[cor(samples)!=1] )) #najvecja izmed korelacij - v redu
+
+# Pogledamo se vec verig:
+initsFunction <- function(){
+  list(mu = rnorm(1, mean = mean(pod.sole$povprecje), sd = 10),
+       eta = runif(1, min = 0, max = 10),
+       sigma = runif(1, min = 0, max = 10),
+       muGroups = rnorm(m, mean = pod.sole$povprecje, sd = 10))
+}
+
+samplesList <- runMCMC(Cmcmc, niter = 12000, nburnin = 2000,
+                          nchains = 3, inits = initsFunction)
+
+chainsPlot(samplesList, var = c("mu", "muGroups[1]", "eta", "sigma")) #dobro
+
+chainsSummary(samplesList, buffer.left = 1, buffer.right = 1, scale = TRUE, #dobro
+              var = c("mu", "muGroups[1]", "eta", "sigma"))
+```
+
+**Bistvo:** Dobili smo zelo podobne rezultate kakor z Gibbsovim vzorcevalnikom, vendar nismo potrebovali nobenih teoreticnih izpeljav. Konvergenca je bila dobra, pri cemer se nam ni bilo treba ukvarjati z izborom samplerjev. Ni pa nujno, da je vedno tako (kaksna koreliranost parametrov nas lahko prisili v drugacen izbor samplerjev).
+
+## Hierarhicni regresijski model (z enakimi variancami) - podatki o solah z dodatno spremenljivko
+
+V novih podatkih imamo dodano spremenljivko SES, tj. socio-ekonomski status. Ta je bila izracunana iz dohodka starsev in izobrazbe.
+
+Zanima nas povezanost rezultata matematicnega testa s SES.
+
+Naredimo po eno linearno regresijo rezultatMatTesta~SES za vsako solo - dobimo mu_j (regresijska konstanta) in beta_j za vsako solo j. Nato vse mu_j povezemo hierarhicno (kot prej), enako pa naredimo tudi za beta_j.
+
+### Uvozite podatke.
+
+```{r}
+source("podatki_sole2.R")
+pod <- pod2
+```
+
+### Definirajte matriko xMatrix, ki ima ekvivalentno obliko kot yMatrix (matrika velikosti m x max(n)) in vsebuje centrirane vrednosti kovariate SES (centrirane v smislu, da vsaki vrednosti odstejete vzorcno povprecje te sole).
+
+
+### Nadgradite objekte code, constants, inits, in data iz prejsnje naloge. V code dodatno upostevajte hiperparametre za beta_j (npr. oznacite povprecje beta, standardni odklon etaBeta). Naj bodo posamezne beta_j ~ N(beta, etaBeta^2). Pozor: beta_j morate upostevati tudi, ko definirate y[i, j] v objektu code. Dodatne parametre upostevajte tudi v objektu inits, dodatne podatke pa v objektu data.
+
+
+### Generirajte vzorec iz novega modela (uporabite kodo iz prejsnje naloge). Preverite traceplot, aposteriorne porazdelitve, efektivne velikosti vzorcev, korelacije. Ponovno generirajte vzorec tako, da izvedete vec verig (argument inits v funkciji runMCMC).
+
+
